@@ -17,12 +17,24 @@ class Case:
         self.status = status
         self.time = time
         self.flaky = flaky
+        self._had_failure = False
 
 
 class Report:
     def __init__(self):
         self.cases = []
         self.declared = 0
+        self._index = {}
+
+
+def _status_of(tc):
+    status = "passed"
+    for child in tc:
+        if child.tag in ("failure", "error"):
+            return "failed"
+        if child.tag == "skipped":
+            status = "skipped"
+    return status
 
 
 def parse(sources, counter):
@@ -33,23 +45,24 @@ def parse(sources, counter):
             report.declared += int(suite.get("tests") or 0)
             for tc in suite.iter("testcase"):
                 counter.scanned += 1
-                status = "passed"
-                for child in tc:
-                    if child.tag in ("failure", "error"):
-                        status = "failed"
-                case = Case(
-                    tc.get("classname", ""),
-                    tc.get("name", ""),
-                    status,
-                    float(tc.get("time") or 0),
-                )
-                report.cases.append(case)
+                status = _status_of(tc)
+                classname = tc.get("classname", "")
+                name = tc.get("name", "")
+                time = float(tc.get("time") or 0)
+                key = (classname, name)
+                case = report._index.get(key)
+                if case is None:
+                    case = Case(classname, name, status, time)
+                    report._index[key] = case
+                    report.cases.append(case)
+                else:
+                    case._had_failure = case._had_failure or case.status == "failed"
+                    case.status = status
+                    case.time = time
+                    case.flaky = status == "passed" and case._had_failure
     return report
 
 
 def lookup(report, classname, name, counter):
-    for case in report.cases:
-        counter.scanned += 1
-        if case.classname == classname and case.name == name:
-            return case
-    return None
+    counter.scanned += 1
+    return report._index.get((classname, name))

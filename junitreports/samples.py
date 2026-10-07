@@ -35,7 +35,7 @@ def run(name):
         src = suite(5, '<testcase classname="a" name="t1" time="0"/>'
                        '<testcase classname="a" name="t2" time="0"/>')
         report = core.parse([src], core.Counter())
-        _line({"total": report.declared})
+        _line({"total": len(report.cases)})
         return 0
     if name == "work":
         body = "".join('<testcase classname="a" name="t%04d" time="0"/>' % i for i in range(800))

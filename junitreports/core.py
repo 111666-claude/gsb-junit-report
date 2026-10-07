@@ -22,34 +22,46 @@ class Case:
 class Report:
     def __init__(self):
         self.cases = []
-        self.declared = 0
+        self._index = {}
+
+
+def _status(tc):
+    for child in tc:
+        if child.tag in ("failure", "error"):
+            return "failed"
+        if child.tag == "skipped":
+            return "skipped"
+    return "passed"
 
 
 def parse(sources, counter):
     report = Report()
+    merged = {}
+    ever_failed = {}
     for src in sources:
         root = ET.fromstring(src)
         for suite in root.iter("testsuite"):
-            report.declared += int(suite.get("tests") or 0)
             for tc in suite.iter("testcase"):
                 counter.scanned += 1
-                status = "passed"
-                for child in tc:
-                    if child.tag in ("failure", "error"):
-                        status = "failed"
+                key = (tc.get("classname", ""), tc.get("name", ""))
+                if key in merged and merged[key].status == "failed":
+                    ever_failed[key] = True
+                else:
+                    ever_failed.setdefault(key, False)
                 case = Case(
-                    tc.get("classname", ""),
-                    tc.get("name", ""),
-                    status,
+                    key[0],
+                    key[1],
+                    _status(tc),
                     float(tc.get("time") or 0),
                 )
-                report.cases.append(case)
+                merged[key] = case
+    for key, case in merged.items():
+        case.flaky = ever_failed[key] and case.status == "passed"
+        report.cases.append(case)
+        report._index[key] = case
     return report
 
 
 def lookup(report, classname, name, counter):
-    for case in report.cases:
-        counter.scanned += 1
-        if case.classname == classname and case.name == name:
-            return case
-    return None
+    counter.scanned += 1
+    return report._index.get((classname, name))
